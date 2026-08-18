@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>代理记账疑难追踪与控制台 (Control Tower)</title>
+  
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="manifest" href="data:application/json;charset=utf-8,%7B%22name%22%3A%22Control%20Tower%22%2C%22short_name%22%3A%22Tower%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230f172a%22%2C%22theme_color%22%3A%22%230f172a%22%7D">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#f5f3ff', 100: '#ede9fe', 500: '#8b5cf6', 600: '#7c3aed', 700: '#6d28d9' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Inter', system-ui, sans-serif; background-color: #0b0f19; color: #e2e8f0; -webkit-tap-highlight-color: transparent; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 9999px; }
+    .glass-card { background: rgba(30, 41, 59, 0.45); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+    .glass-card-hover:hover { transform: translateY(-1px); border-color: rgba(139, 92, 246, 0.3); box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5); }
+    .font-tabular { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body class="h-screen overflow-hidden p-3 md:p-5 flex flex-col relative">
+
+  <!-- 锁屏 Overlay -->
+  <div id="login-overlay" class="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-xl flex items-center justify-center p-4">
+    <div class="glass-card p-6 rounded-2xl w-full max-w-sm space-y-4 text-center shadow-2xl border border-slate-800">
+      <div class="w-12 h-12 rounded-xl bg-violet-600/20 border border-violet-500/30 flex items-center justify-center text-violet-400 font-bold mx-auto text-xl">🔒</div>
+      <div>
+        <h2 class="text-base font-bold text-white">代理记账控制台登录</h2>
+        <p class="text-slate-400 text-xs mt-1">请输入 PIN 码（默认: 1234）</p>
+      </div>
+      <div class="space-y-3">
+        <input type="password" id="login-pin" maxlength="10" placeholder="输入密码..." class="w-full text-center tracking-widest text-lg bg-slate-900/80 border border-slate-700 rounded-xl p-2.5 text-white focus:outline-none focus:border-violet-500">
+        <button onclick="checkLogin()" class="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-medium text-xs transition shadow-lg shadow-violet-600/20">解锁进入系统</button>
+      </div>
+      <p id="login-err" class="text-xs text-rose-400 hidden">密码错误</p>
+    </div>
+  </div>
+
+  <!-- 顶栏 Header -->
+  <header class="flex justify-between items-center pb-3 border-b border-slate-800/60 shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-xl bg-violet-600/20 border border-violet-500/30 flex items-center justify-center text-violet-400 font-bold shadow-inner">⚡</div>
+      <div>
+        <h1 class="text-base font-bold text-slate-100 tracking-tight flex items-center gap-2">
+          代理记账疑难追踪控制台 <span class="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20">Control Tower 2026</span>
+        </h1>
+        <p class="text-slate-400 text-xs">Linear 级多企业账目对账、疑难流转与税务合规中枢</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2.5">
+      <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> 数据库在线
+      </div>
+      <button onclick="changePasswordPrompt()" class="px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-700 transition">🔑 修改密码</button>
+      <button onclick="addNewCompanyPrompt()" class="px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-700 transition">+ 新增公司</button>
+      <button onclick="lockSystem()" class="px-2 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs border border-rose-500/20 transition">🔒</button>
+    </div>
+  </header>
+
+  <!-- 主布局 -->
+  <main class="grid grid-cols-12 gap-3.5 mt-3 flex-1 overflow-hidden">
+    
+    <!-- 左侧栏 (22%) -->
+    <aside class="col-span-3 flex flex-col gap-3 overflow-hidden">
+      <div class="glass-card rounded-2xl p-3 flex flex-col h-1/2">
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-xs font-semibold text-slate-300">🏢 托管公司列表</span>
+          <span id="company-count-tag" class="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">0 家</span>
+        </div>
+        <div id="company-list" class="space-y-1.5 overflow-y-auto pr-1 flex-1"></div>
+      </div>
+
+      <div class="glass-card rounded-2xl p-3 flex flex-col h-1/2">
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-xs font-semibold text-slate-300">📊 月度做账矩阵</span>
+          <input type="month" id="matrix-month-picker" value="2026-08" onchange="updateMatrixMonth(this.value)" class="bg-slate-800 text-slate-300 text-[11px] px-1.5 py-0.5 rounded border border-slate-700 focus:outline-none">
+        </div>
+        <div class="flex justify-between items-center text-[10px] text-slate-400 mb-2 bg-slate-800/40 p-1.5 rounded-lg border border-slate-800">
+          <span>选定月份进度:</span>
+          <span id="matrix-progress-text" class="font-bold text-emerald-400">85% Completed</span>
+        </div>
+        <div id="matrix-container" class="space-y-1.5 overflow-y-auto pr-1 flex-1 text-xs"></div>
+      </div>
+    </aside>
+
+    <!-- 中部主视图 (53%) -->
+    <section class="col-span-6 flex flex-col gap-3 overflow-hidden">
+      
+      <!-- 公司财务大盘与报表导入 -->
+      <div class="glass-card rounded-2xl p-3 shrink-0">
+        <div class="flex justify-between items-center mb-2">
+          <div class="flex items-center gap-2">
+            <span id="financial-title-label" class="text-xs font-semibold text-violet-300">📊 财务与流转大盘</span>
+            <input type="month" id="fin-month-picker" value="2026-08" onchange="changeFinancialPeriod(this.value)" class="bg-slate-900 text-slate-200 text-xs border border-slate-700 rounded px-2 py-0.5 focus:outline-none focus:border-violet-500">
+          </div>
+          <button onclick="openImportModal()" class="px-2.5 py-1 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-[11px] font-medium transition shadow-md shadow-violet-600/20 flex items-center gap-1">
+            📥 导入报表 / 录入
+          </button>
+        </div>
+
+        <div class="grid grid-cols-4 gap-2">
+          <!-- 1. 销售 vs 入账 -->
+          <div class="bg-slate-900/40 border border-slate-800/80 rounded-xl p-2.5">
+            <div class="flex justify-between items-center text-[10px] text-slate-400">
+              <span>1. 销售 vs 入账</span>
+              <span class="text-[9px] text-violet-400">对账</span>
+            </div>
+            <div class="text-[10px] text-slate-400 mt-1">系统销售: <span id="fin-sales" class="font-bold text-slate-100 font-tabular">RM 0</span></div>
+            <div class="text-[10px] text-emerald-400">银行入账: <span id="fin-bank-in" class="font-bold font-tabular">RM 0</span></div>
+            <div class="text-[9px] text-amber-300/80 mt-1 pt-1 border-t border-slate-800/60" id="fin-sales-diff">未对平: RM 0</div>
+          </div>
+
+          <!-- 2. 采购 vs 出账 -->
+          <div class="bg-slate-900/40 border border-slate-800/80 rounded-xl p-2.5">
+            <div class="flex justify-between items-center text-[10px] text-slate-400">
+              <span>2. 采购 vs 出账</span>
+              <span class="text-[9px] text-violet-400">对账</span>
+            </div>
+            <div class="text-[10px] text-slate-400 mt-1">系统采购: <span id="fin-purchase" class="font-bold text-slate-100 font-tabular">RM 0</span></div>
+            <div class="text-[10px] text-rose-400">银行出账: <span id="fin-bank-out" class="font-bold font-tabular">RM 0</span></div>
+            <div class="text-[9px] text-amber-300/80 mt-1 pt-1 border-t border-slate-800/60" id="fin-purchase-diff">未对平: RM 0</div>
+          </div>
+
+          <!-- 3. 零用金 Petty Cash (免银行比对) -->
+          <div class="bg-slate-900/40 border border-slate-800/80 rounded-xl p-2.5">
+            <div class="flex justify-between items-center text-[10px] text-slate-400">
+              <span>3. 零用金 Cash</span>
+              <span class="text-[9px] text-emerald-400">现金模式</span>
+            </div>
+            <div class="text-[10px] text-slate-400 mt-1">当月拨入: <span id="fin-petty-alloc" class="font-bold text-slate-100 font-tabular">RM 0</span></div>
+            <div class="text-[10px] text-sky-400">实际已报: <span id="fin-petty-reimb" class="font-bold font-tabular">RM 0</span></div>
+            <div class="text-[9px] text-slate-500 mt-1 pt-1 border-t border-slate-800/60">*免银行对比</div>
+          </div>
+
+          <!-- 4. 未对平 / 悬账汇总 -->
+          <div class="bg-amber-500/10 border border-amber-500/20 rounded-xl p-2.5">
+            <span class="text-[10px] text-amber-300 block">4. 汇总差额 / 悬账</span>
+            <div id="fin-recon-diff" class="text-xs font-bold font-tabular text-amber-200 mt-1">Recon 差额: RM 0</div>
+            <div id="fin-suspense" class="text-[10px] font-bold font-tabular text-rose-400 mt-1">悬账 Suspense: RM 0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 疑难问题追踪器 -->
+      <div class="glass-card rounded-2xl p-3 flex flex-col flex-1 overflow-hidden">
+        <div class="flex justify-between items-center pb-2 border-b border-slate-800/80 shrink-0">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-semibold text-slate-200">⚠️ 疑难账目大盘</span>
+            <span id="issue-header-tag" class="text-[10px] px-2 py-0.5 rounded bg-violet-500/10 text-violet-300 border border-violet-500/20">合并所有公司</span>
+          </div>
+          <button onclick="openIssueModal()" class="px-2.5 py-1 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-[11px] font-medium transition shadow-md shadow-violet-600/20">+ 手动新增 Issue</button>
+        </div>
+
+        <div class="flex items-center justify-between my-2 shrink-0">
+          <div class="flex gap-1.5 overflow-x-auto text-[11px]">
+            <button onclick="filterCategory('ALL')" class="px-2.5 py-0.5 rounded-full bg-violet-600 text-white">全部</button>
+            <button onclick="filterCategory('missing_docs')" class="px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400">📄 单据缺失</button>
+            <button onclick="filterCategory('discrepancies')" class="px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400">⚖️ 账面差额</button>
+            <button onclick="filterCategory('unidentified_txn')" class="px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400">🏦 银行不明</button>
+          </div>
+          <button id="archive-tab-btn" onclick="toggleArchiveTab()" class="px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400 hover:text-emerald-400 border border-slate-700 text-[11px]">
+            ☑️ 已归档 (<span id="archive-count">0</span>)
+          </button>
+        </div>
+
+        <div id="issues-container" class="space-y-2 overflow-y-auto pr-1 flex-1"></div>
+
+        <div class="mt-2 pt-2 border-t border-slate-800/80 flex justify-between items-center shrink-0">
+          <span class="text-[11px] text-slate-400">💬 客户沟通:</span>
+          <button onclick="copyWhatsAppMessage()" class="px-3 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 text-xs transition">
+            📋 复制 WhatsApp 催单文本
+          </button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- 右侧栏 (25%) -->
+    <aside class="col-span-3 flex flex-col gap-3 overflow-hidden">
+      <div class="glass-card rounded-2xl p-3 flex flex-col h-1/2">
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-xs font-semibold text-slate-300">🏛️ 税务 Tax Period 汇总</span>
+        </div>
+        <div id="tax-logs-container" class="space-y-1.5 overflow-y-auto pr-1 flex-1 text-xs"></div>
+      </div>
+
+      <div class="glass-card rounded-2xl p-3 flex flex-col h-1/2">
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-xs font-semibold text-slate-300">📋 月度法定/固定费用</span>
+          <button onclick="addCustomChecklist()" class="text-[10px] text-violet-400 hover:underline">+ 自定义</button>
+        </div>
+        <div id="checklist-container" class="space-y-1.5 overflow-y-auto pr-1 flex-1 text-xs"></div>
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- 报表导入与解析 Modal 弹窗 -->
+  <div id="import-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+    <div class="glass-card rounded-2xl w-full max-w-lg p-5 space-y-4 shadow-2xl border border-slate-800">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-2.5">
+        <h3 class="text-xs font-bold text-white flex items-center gap-1.5">📥 财务报表导入 & 录入提取器</h3>
+        <button onclick="closeImportModal()" class="text-slate-400 hover:text-white text-base">×</button>
+      </div>
+
+      <!-- 模式切换：提取 / 填写 -->
+      <div class="grid grid-cols-2 gap-2 p-1 bg-slate-900 rounded-xl text-xs">
+        <button id="mode-btn-file" onclick="switchImportMode('file')" class="py-1.5 rounded-lg bg-violet-600 text-white font-medium">📄 Excel/CSV/图片提取</button>
+        <button id="mode-btn-manual" onclick="switchImportMode('manual')" class="py-1.5 rounded-lg text-slate-400 hover:text-white">✍️ 自主填写/核对</button>
+      </div>
+
+      <!-- 模式 1: 文件拖拽提取 -->
+      <div id="import-file-section" class="space-y-3">
+        <div class="border-2 border-dashed border-slate-700 hover:border-violet-500/60 rounded-xl p-5 text-center bg-slate-900/50 cursor-pointer transition" onclick="simulateFileUpload()">
+          <p class="text-xl mb-1">📊</p>
+          <p class="text-xs font-medium text-slate-200">点击上传系统 Excel / CSV 报表或银行 PDF 截图</p>
+          <p class="text-[10px] text-slate-500 mt-1">自动通过智能 OCR 识别文字并归类总金额</p>
+        </div>
+        <div id="file-parsed-preview" class="hidden p-3 bg-violet-500/10 border border-violet-500/20 rounded-xl space-y-1 text-xs">
+          <p class="text-violet-300 font-bold text-[11px]">✅ 报表数据自动提取成果：</p>
+          <div class="grid grid-cols-2 gap-2 text-[10px] text-slate-300">
+            <div>系统销售: <span id="parse-s" class="text-white font-bold">RM 142,000.00</span></div>
+            <div>银行入账: <span id="parse-bi" class="text-emerald-400 font-bold">RM 135,000.00</span></div>
+            <div>系统采购: <span id="parse-p" class="text-white font-bold">RM 88,000.00</span></div>
+            <div>银行出账: <span id="parse-bo" class="text-rose-400 font-bold">RM 88,000.00</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 模式 2: 自主手动填写 -->
+      <form id="manual-financial-form" onsubmit="saveFinancialImport(event)" class="space-y-3 text-xs">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-slate-400 mb-1">目标公司</label>
+            <select id="imp-company-id" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200 focus:outline-none"></select>
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">对应月份</label>
+            <input type="month" id="imp-month" value="2026-08" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200 focus:outline-none">
+          </div>
+        </div>
+
+        <div class="p-2.5 bg-slate-900/60 rounded-xl border border-slate-800 space-y-2">
+          <span class="text-[11px] font-bold text-violet-300 block">1. 销售 vs 银行入账</span>
+          <div class="grid grid-cols-2 gap-2">
+            <div><span class="text-[10px] text-slate-400">系统导出销售</span><input id="imp-sales" type="number" step="0.01" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-slate-200 mt-1 font-tabular"></div>
+            <div><span class="text-[10px] text-emerald-400">实际银行进账</span><input id="imp-bank-in" type="number" step="0.01" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-slate-200 mt-1 font-tabular"></div>
+          </div>
+        </div>
+
+        <div class="p-2.5 bg-slate-900/60 rounded-xl border border-slate-800 space-y-2">
+          <span class="text-[11px] font-bold text-violet-300 block">2. 采购 vs 银行出账</span>
+          <div class="grid grid-cols-2 gap-2">
+            <div><span class="text-[10px] text-slate-400">系统导出采购</span><input id="imp-purchase" type="number" step="0.01" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-slate-200 mt-1 font-tabular"></div>
+            <div><span class="text-[10px] text-rose-400">实际银行出账</span><input id="imp-bank-out" type="number" step="0.01" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-slate-200 mt-1 font-tabular"></div>
+          </div>
+        </div>
+
+        <div class="p-2.5 bg-slate-900/60 rounded-xl border border-slate-800 space-y-2">
+          <div class="flex justify-between items-center">
+            <span class="text-[11px] font-bold text-violet-300">3. 零用金 Petty Cash</span>
+            <span class="text-[9px] text-slate-500">不用比对银行月结单</span>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><span class="text-[10px] text-slate-400">当月现钱拨入</span><input id="imp-petty-alloc" type="number" step="0.01" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-slate-200 mt-1 font-tabular"></div>
+            <div><span class="text-[10px] text-slate-400">实际已报销</span><input id="imp-petty-reimb" type="number" step="0.01" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-slate-200 mt-1 font-tabular"></div>
+          </div>
+        </div>
+
+        <div class="pt-2 flex justify-end gap-2 border-t border-slate-800">
+          <button type="button" onclick="closeImportModal()" class="px-3 py-1.5 rounded bg-slate-800 text-slate-300">取消</button>
+          <button type="submit" class="px-4 py-1.5 rounded bg-violet-600 text-white font-medium">应用并存入大盘</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 问题 Edit/Add Modal -->
+  <div id="issue-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+    <div class="glass-card rounded-2xl w-full max-w-lg p-5 space-y-3 shadow-2xl border border-slate-800">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-2.5">
+        <h3 id="modal-title" class="text-xs font-bold text-white">编辑 / 查看疑难详情</h3>
+        <button onclick="closeIssueModal()" class="text-slate-400 hover:text-white text-base">×</button>
+      </div>
+      <form id="issue-form" onsubmit="saveIssueModal(event)" class="space-y-3 text-xs">
+        <input type="hidden" id="modal-issue-id">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-slate-400 mb-1">所属公司</label>
+            <select id="modal-company-id" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200 focus:outline-none"></select>
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">疑难分类</label>
+            <select id="modal-category" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200 focus:outline-none">
+              <option value="missing_docs">单据缺失 (Missing Docs)</option>
+              <option value="discr
