@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>代理记账疑难追踪控制台 (Control Tower)</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -16,11 +16,11 @@
 
   <div class="max-w-[1650px] mx-auto space-y-4">
     
-    <!-- 1. 顶部 Header -->
+    <!-- 1. Header 顶栏 -->
     <header class="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
       <div class="flex items-center gap-3">
         <div class="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold text-sm">
-          <i class="fa-solid font-bold fa-bolt"></i>
+          <i class="fa-solid fa-bolt"></i>
         </div>
         <div>
           <div class="flex items-center gap-2">
@@ -32,8 +32,11 @@
       </div>
 
       <div class="flex items-center gap-3">
+        <button onclick="performYearEndClosing()" class="px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+          <i class="fa-solid fa-arrows-rotate text-[10px]"></i> 财年年结/结转
+        </button>
         <div id="connection-status" class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> 数据库在线
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> 系统就绪
         </div>
         <button onclick="toggleModal('modal-company', true)" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition shadow-lg shadow-indigo-600/20 flex items-center gap-1.5">
           <i class="fa-solid fa-plus text-[10px]"></i> 新增公司
@@ -41,7 +44,7 @@
       </div>
     </header>
 
-    <!-- 2. 三栏主布局 -->
+    <!-- 2. 三栏式控制台布局 -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
       
       <!-- ==================== 左栏 (Col 3) ==================== -->
@@ -62,22 +65,18 @@
             </button>
           </div>
           <ul id="company-list" class="space-y-1.5 max-h-[340px] overflow-y-auto pr-1">
-            <li class="text-slate-500 text-xs text-center py-4">正在加载...</li>
+            <li class="text-slate-500 text-xs text-center py-4">正在初始化...</li>
           </ul>
         </div>
 
-        <!-- 月度做账矩阵 (自选月份) -->
+        <!-- 月度做账矩阵 (动态12个月份下拉) -->
         <div class="bg-slate-900/90 border border-slate-800/80 rounded-xl p-3.5 space-y-3 shadow-sm">
           <div class="flex items-center justify-between">
             <h3 class="text-xs font-bold text-slate-200 flex items-center gap-1.5">
               <i class="fa-solid fa-chart-pie text-indigo-400"></i> 月度做账矩阵
             </h3>
-            <!-- 月份选择下拉 -->
+            <!-- 动态填充临近月份 -->
             <select id="matrix-month-picker" onchange="onMonthChange()" class="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded px-2 py-0.5 outline-none font-mono">
-              <option value="2026-08" selected>2026年08月</option>
-              <option value="2026-07">2026年07月</option>
-              <option value="2026-06">2026年06月</option>
-              <option value="2026-05">2026年05月</option>
             </select>
           </div>
           
@@ -97,7 +96,7 @@
       <!-- ==================== 中栏 (Col 6) ==================== -->
       <div class="lg:col-span-6 space-y-4">
         
-        <!-- 公司财务大盘 (四项核心指标) -->
+        <!-- 财务与流转大盘 (四大卡片) -->
         <div class="bg-slate-900/90 border border-slate-800/80 rounded-xl p-3.5 space-y-3">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
@@ -111,9 +110,9 @@
             </button>
           </div>
 
-          <!-- 4 项指标卡片 -->
+          <!-- 4 项对比指标 -->
           <div class="grid grid-cols-2 gap-2.5">
-            <!-- 销售 vs 入账 -->
+            <!-- 1. 销售 vs 入账 -->
             <div class="bg-slate-950/60 border border-slate-800/80 rounded-lg p-2.5 space-y-1">
               <div class="flex justify-between items-center text-[11px]">
                 <span class="text-slate-400">1. 销售 vs 入账</span>
@@ -125,7 +124,7 @@
               </div>
             </div>
 
-            <!-- 采购 vs 出账 -->
+            <!-- 2. 采购 vs 出账 -->
             <div class="bg-slate-950/60 border border-slate-800/80 rounded-lg p-2.5 space-y-1">
               <div class="flex justify-between items-center text-[11px]">
                 <span class="text-slate-400">2. 采购 vs 出账</span>
@@ -137,7 +136,7 @@
               </div>
             </div>
 
-            <!-- 零用金 -->
+            <!-- 3. 零用金 Cash -->
             <div class="bg-slate-950/60 border border-slate-800/80 rounded-lg p-2.5 space-y-1">
               <div class="flex justify-between items-center text-[11px]">
                 <span class="text-slate-400">3. 零用金 Cash</span>
@@ -149,7 +148,7 @@
               </div>
             </div>
 
-            <!-- 悬账预警 -->
+            <!-- 4. 悬账预警 -->
             <div id="card-suspense" class="bg-amber-950/20 border border-amber-500/30 rounded-lg p-2.5 space-y-1">
               <div class="flex justify-between items-center text-[11px]">
                 <span class="text-amber-400 font-medium">4. 汇总差额 / 悬账</span>
@@ -176,22 +175,22 @@
             </button>
           </div>
 
-          <!-- 分类 Filter Pills + 已归档 Tab -->
+          <!-- 分类 Pills + 已归档 Tab -->
           <div class="flex flex-wrap items-center gap-1.5 text-xs border-b border-slate-800/80 pb-2.5">
-            <button onclick="filterIssues('all')" class="issue-filter-btn px-2.5 py-1 rounded-md bg-indigo-600 text-white font-medium">全部</button>
-            <button onclick="filterIssues('missing_docs')" class="issue-filter-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-400 hover:text-white">📄 单据缺失</button>
-            <button onclick="filterIssues('discrepancies')" class="issue-filter-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-400 hover:text-white">⚖️ 账面差额</button>
-            <button onclick="filterIssues('unidentified_txn')" class="issue-filter-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-400 hover:text-white">🏦 银行不明</button>
-            <button onclick="filterIssues('statutory')" class="issue-filter-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-400 hover:text-white">🏛️ 其他合规</button>
-            <button onclick="filterIssues('archived')" class="issue-filter-btn px-2.5 py-1 rounded-md bg-slate-800 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/10 ml-auto">☑️ 已归档/完成</button>
+            <button onclick="filterIssues('all', this)" class="issue-filter-btn px-2.5 py-1 rounded-md bg-indigo-600 text-white font-medium">全部</button>
+            <button onclick="filterIssues('missing_docs', this)" class="issue-filter-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-400 hover:text-white">📄 单据缺失</button>
+            <button onclick="filterIssues('discrepancies', this)" class="issue-filter-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-400 hover:text-white">⚖️ 账面差额</button>
+            <button onclick="filterIssues('unidentified_txn', this)" class="issue-filter-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-400 hover:text-white">🏦 银行不明</button>
+            <button onclick="filterIssues('statutory', this)" class="issue-filter-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-400 hover:text-white">🏛️ 其他合规</button>
+            <button onclick="filterIssues('archived', this)" class="issue-filter-btn px-2.5 py-1 rounded-md bg-slate-800 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/10 ml-auto">☑️ 已归档/完成</button>
           </div>
 
-          <!-- 疑难事项列表 -->
+          <!-- 疑难列表列表 -->
           <div id="issues-container" class="space-y-2 max-h-[380px] overflow-y-auto pr-1">
             <p class="text-slate-500 text-xs text-center py-6">数据读取中...</p>
           </div>
 
-          <!-- 底部工具: WhatsApp 催单 -->
+          <!-- 底部工具 -->
           <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between">
             <span class="text-[11px] text-slate-400">快捷沟通组件:</span>
             <button onclick="generateWhatsAppText()" class="px-3 py-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30 rounded text-xs font-medium transition flex items-center gap-1.5">
@@ -250,9 +249,9 @@
         <div>
           <label class="block text-slate-400 mb-1">公司类型</label>
           <select id="input-c-type" class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white outline-none">
-            <option value="sdn_bhd">Sdn Bhd</option>
-            <option value="plt">PLT</option>
-            <option value="sole_prop">Sole Prop</option>
+            <option value="Sdn Bhd">Sdn Bhd</option>
+            <option value="PLT">PLT</option>
+            <option value="Sole Prop">Sole Prop</option>
           </select>
         </div>
         <div>
@@ -297,10 +296,7 @@
         </div>
         <div>
           <label class="block text-slate-400 mb-1">推导猜测 / 备注</label>
-          <input id="input-i-guess" type="text" placeholder="可能为老板个人支取或供应商漏开发票" class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white outline-none">
-        </div>
-        <div class="p-2 border border-dashed border-slate-700 rounded bg-slate-950/40 text-center">
-          <p class="text-[11px] text-slate-400"><i class="fa-solid fa-camera mr-1"></i> 截图/OCR 识别暂未粘贴图像</p>
+          <input id="input-i-guess" type="text" placeholder="例如: 董事私纳或漏开发票" class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white outline-none">
         </div>
       </div>
       <div class="flex justify-end gap-2 pt-2">
@@ -310,7 +306,7 @@
     </div>
   </div>
 
-  <!-- 3. 编辑 Issue Modal (双击/点击整行触发) -->
+  <!-- 3. 编辑/解决 Issue Modal -->
   <div id="modal-edit-issue" class="fixed inset-0 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
     <div class="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 space-y-3 shadow-2xl">
       <div class="flex justify-between items-center">
@@ -325,16 +321,22 @@
         </div>
         <div>
           <label class="block text-slate-400 mb-1">已完成 / 解决的描述记录</label>
-          <textarea id="edit-i-solution" placeholder="如: 客户补回发票，已入账对平..." class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white outline-none h-16"></textarea>
+          <textarea id="edit-i-solution" placeholder="如: 客户补回 Tax Invoice，账已对平..." class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white outline-none h-16"></textarea>
         </div>
         <div class="flex items-center gap-2 pt-1">
           <input id="edit-i-status" type="checkbox" class="w-4 h-4 accent-emerald-500 rounded cursor-pointer">
-          <label for="edit-i-status" class="text-emerald-400 font-medium cursor-pointer">标记为 ☑️ 已完成 / 已解决 (归档)</label>
+          <label for="edit-i-status" class="text-emerald-400 font-medium cursor-pointer">标记为 ☑️ 已完成 / 已解决 (移入归档)</label>
         </div>
       </div>
       <div class="flex justify-between items-center pt-3 border-t border-slate-800">
-        <button id="btn-delete-issue" onclick="deleteIssue()" class="px-3 py-1.5 bg-rose-600/20 text-rose-400 border border-rose-500/30 hover:bg-rose-600/30 rounded text-xs font-medium">彻底删除记录</button>
+        <button onclick="deleteIssue()" class="px-3 py-1.5 bg-rose-600/20 text-rose-400 border border-rose-500/30 hover:bg-rose-600/30 rounded text-xs font-medium">彻底删除记录</button>
         <div class="flex gap-2">
           <button onclick="toggleModal('modal-edit-issue', false)" class="px-3 py-1.5 bg-slate-800 text-slate-300 rounded text-xs">取消</button>
           <button onclick="updateIssue()" class="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs font-medium">更新保存</button>
-        </div
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. 财务大盘指标录入 Modal -->
+  <div id="modal-fin-import" class="fixed inset-0 bg-
