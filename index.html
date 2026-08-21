@@ -3,87 +3,437 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>代理记账控制台</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  
-  <!-- 1. 将函数直接强行挂载到全局 window 对象，确保 onclick 绝对能找到 -->
+  <title>代理记账疑难追踪控制台 (Control Tower)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #020617; color: #f8fafc; padding: 16px; line-height: 1.5; }
+    .max-w { max-width: 1600px; margin: 0 auto; }
+    .flex { display: flex; }
+    .flex-col { flex-direction: column; }
+    .items-center { align-items: center; }
+    .justify-between { justify-content: space-between; }
+    .gap-2 { gap: 8px; } .gap-3 { gap: 12px; } .gap-4 { gap: 16px; }
+    .grid { display: grid; gap: 16px; }
+    @media (min-width: 1024px) {
+      .grid-3col { grid-template-columns: 280px 1fr 300px; }
+    }
+    .card { background-color: #0f172a; border: 1px solid #1e293b; border-radius: 12px; padding: 14px; }
+    .btn { padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; border: none; transition: 0.2s; }
+    .btn-indigo { background-color: #4f46e5; color: #fff; }
+    .btn-indigo:hover { background-color: #4338ca; }
+    .btn-dark { background-color: #1e293b; color: #cbd5e1; border: 1px solid #334155; }
+    .btn-dark:hover { background-color: #334155; }
+    .btn-amber { background-color: rgba(217,119,6,0.2); color: #fbbf24; border: 1px solid rgba(217,119,6,0.3); }
+    .btn-emerald { background-color: rgba(16,185,129,0.2); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
+    .badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
+    .badge-slate { background: #1e293b; color: #94a3b8; }
+    .badge-indigo { background: rgba(79,70,229,0.2); color: #818cf8; border: 1px solid rgba(79,70,229,0.3); }
+    .tag { padding: 4px 8px; border-radius: 6px; font-size: 11px; cursor: pointer; background: #1e293b; color: #94a3b8; border: none; }
+    .tag-active { background: #4f46e5; color: #fff; }
+    input, select, textarea { width: 100%; background: #1e293b; border: 1px solid #334155; color: #fff; border-radius: 6px; padding: 6px 10px; font-size: 12px; outline: none; }
+    .fin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .fin-card { background: rgba(2,6,23,0.6); border: 1px solid #1e293b; border-radius: 8px; padding: 10px; font-size: 12px; }
+    .mono { font-family: monospace; }
+    .text-emerald { color: #34d399; } .text-rose { color: #fb7185; } .text-amber { color: #fbbf24; } .text-indigo { color: #818cf8; } .text-slate { color: #94a3b8; }
+    .progress-bg { background: #1e293b; height: 8px; border-radius: 999px; overflow: hidden; margin-top: 6px; }
+    .progress-bar { background: #10b981; height: 100%; width: 0%; transition: width 0.3s; }
+    .list-item { padding: 8px 10px; background: rgba(2,6,23,0.4); border: 1px solid #1e293b; border-radius: 6px; margin-bottom: 6px; font-size: 12px; cursor: pointer; }
+    .list-item:hover { border-color: #334155; }
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: none; align-items: center; justify-content: center; z-index: 999; padding: 16px; }
+    .modal-box { background: #0f172a; border: 1px solid #1e293b; border-radius: 12px; max-width: 450px; width: 100%; padding: 20px; }
+  </style>
+
+  <!-- 脚本完全写入头部，确保全局优先注入 -->
   <script>
-    window.toggleModal = function(id, show) {
-      const el = document.getElementById(id);
-      if (!el) return;
-      if (show) {
-        el.classList.remove('hidden');
-        el.classList.add('flex');
-      } else {
-        el.classList.add('hidden');
-        el.classList.remove('flex');
-      }
+    // 1. 初始化持久化数据状态
+    const DEFAULT_DATA = {
+      companies: [],
+      issues: [],
+      checklists: [],
+      taxLogs: [],
+      financials: { salesInv: 'RM 0', salesBank: 'RM 0', purInv: 'RM 0', purBank: 'RM 0', cashIn: 'RM 0', cashOut: 'RM 0', reconDiff: 'RM 0', suspense: 'RM 0' }
     };
 
+    function getStoredData() {
+      try {
+        const d = localStorage.getItem('accounting_tracker_data');
+        return d ? JSON.parse(d) : DEFAULT_DATA;
+      } catch(e) { return DEFAULT_DATA; }
+    }
+
+    window.state = getStoredData();
+    window.activeCompanyId = null;
+    window.activeFilter = 'all';
+
+    window.saveState = function() {
+      localStorage.setItem('accounting_tracker_data', JSON.stringify(window.state));
+    };
+
+    // 2. 核心弹窗控制（绝对挂载至全局 window）
+    window.toggleModal = function(id, show) {
+      const modal = document.getElementById(id);
+      if (modal) modal.style.display = show ? 'flex' : 'none';
+    };
+
+    // 3. 备份与还原 (Backup & Restore)
     window.exportBackup = function() {
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(localStorage.getItem('accounting_tracker_data') || '{}'));
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(window.state, null, 2));
       const a = document.createElement('a');
       a.href = dataStr;
-      a.download = `backup-${new Date().toISOString().slice(0,10)}.json`;
+      a.download = `accounting_backup_${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
     };
 
-    window.initPage = function() {
-      // 自动生成日期下拉框
-      const select = document.getElementById('matrix-month-picker');
-      if (select) {
-        select.innerHTML = '';
-        const today = new Date('2026-08-01');
-        for (let i = -6; i <= 5; i++) {
-          const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
-          const y = d.getFullYear();
-          const m = String(d.getMonth() + 1).padStart(2, '0');
-          const opt = document.createElement('option');
-          opt.value = `${y}-${m}`;
-          opt.textContent = `${y}年${m}月`;
-          if (i === 0) opt.selected = true;
-          select.appendChild(opt);
+    window.importBackup = function(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (imported && typeof imported === 'object') {
+            window.state = imported;
+            window.saveState();
+            window.renderAll();
+            alert("备份数据还原成功！");
+          }
+        } catch(err) { alert("JSON 文件格式有误，导入失败！"); }
+      };
+      reader.readAsText(file);
+    };
+
+    // 4. 公司管理逻辑
+    window.selectCompany = function(cid) {
+      window.activeCompanyId = cid;
+      window.renderCompanyList();
+      const label = document.getElementById('active-company-label');
+      if (label) {
+        if (cid) {
+          const c = window.state.companies.find(comp => comp.id === cid);
+          label.textContent = c ? c.name : cid;
+        } else {
+          label.textContent = "全局视角 (合并所有公司)";
         }
+      }
+      window.renderIssues();
+    };
+
+    window.submitCompany = function() {
+      const name = document.getElementById('input-c-name').value;
+      const type = document.getElementById('input-c-type').value;
+      const software = document.getElementById('input-c-sw').value || '未指定';
+      if (!name) return alert('请输入公司名称');
+
+      window.state.companies.push({ id: 'c_' + Date.now(), name, type, software });
+      window.saveState();
+      document.getElementById('input-c-name').value = '';
+      document.getElementById('input-c-sw').value = '';
+      window.toggleModal('modal-company', false);
+      window.renderCompanyList();
+      window.renderCompanyDropdown();
+    };
+
+    window.renderCompanyList = function() {
+      const badge = document.getElementById('company-count-badge');
+      if (badge) badge.textContent = `${window.state.companies.length} 家`;
+      const container = document.getElementById('company-list');
+      if (!container) return;
+      if (window.state.companies.length === 0) {
+        container.innerHTML = `<div style="text-align:center; color:#64748b; font-size:12px; padding:10px;">暂无公司</div>`;
+        return;
+      }
+      container.innerHTML = window.state.companies.map(c => `
+        <div onclick="window.selectCompany('${c.id}')" class="list-item flex justify-between items-center" style="${window.activeCompanyId === c.id ? 'border-color:#4f46e5; background:rgba(79,70,229,0.15);' : ''}">
+          <div><p style="font-weight:bold;">${c.name}</p><p class="text-slate mono" style="font-size:10px;">${c.software}</p></div>
+          <span class="badge badge-slate">${c.type}</span>
+        </div>
+      `).join('');
+    };
+
+    window.renderCompanyDropdown = function() {
+      const select = document.getElementById('input-i-company');
+      if (!select) return;
+      if (window.state.companies.length === 0) {
+        select.innerHTML = `<option value="">请先创建公司</option>`;
+        return;
+      }
+      select.innerHTML = window.state.companies.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    };
+
+    // 5. 疑难账目 (Issues) 逻辑
+    window.submitIssue = function() {
+      const company_id = document.getElementById('input-i-company').value;
+      const category = document.getElementById('input-i-cat').value;
+      const amount = document.getElementById('input-i-amt').value || 'RM 0.00';
+      const description = document.getElementById('input-i-desc').value;
+      const guess = document.getElementById('input-i-guess').value;
+      if (!company_id) return alert('请先选择公司！');
+      if (!description) return alert('请输入问题描述');
+
+      window.state.issues.push({ id: 'i_' + Date.now(), company_id, category, amount, description, guess, status: 'pending' });
+      window.saveState();
+      document.getElementById('input-i-desc').value = '';
+      document.getElementById('input-i-guess').value = '';
+      document.getElementById('input-i-amt').value = '';
+      window.toggleModal('modal-issue', false);
+      window.renderIssues();
+    };
+
+    window.renderIssues = function() {
+      const container = document.getElementById('issues-container');
+      if (!container) return;
+      let list = window.activeCompanyId 
+        ? window.state.issues.filter(i => i.company_id === window.activeCompanyId)
+        : window.state.issues;
+
+      if (window.activeFilter === 'archived') {
+        list = list.filter(i => i.status === 'resolved');
+      } else {
+        list = list.filter(i => i.status !== 'resolved');
+        if (window.activeFilter !== 'all') list = list.filter(i => i.category === window.activeFilter);
+      }
+
+      if (list.length === 0) {
+        container.innerHTML = `<div style="text-align:center; color:#64748b; font-size:12px; padding:20px;">暂无疑难事项</div>`;
+        return;
+      }
+
+      container.innerHTML = list.map(i => {
+        const comp = window.state.companies.find(c => c.id === i.company_id);
+        const name = comp ? comp.name : '未知';
+        const isResolved = i.status === 'resolved';
+        return `
+          <div onclick="window.openEditIssue('${i.id}')" class="list-item" style="display:block;">
+            <div class="flex justify-between items-center" style="margin-bottom:4px;">
+              <span class="text-indigo font-bold">[${name}]</span>
+              <span class="text-amber mono" style="font-weight:bold;">${i.amount}</span>
+            </div>
+            <p style="color:#e2e8f0; font-size:12px;">${i.description}</p>
+            ${i.guess ? `<p class="text-slate" style="font-size:11px; font-style:italic; margin-top:2px;">推测: ${i.guess}</p>` : ''}
+            ${isResolved && i.solution ? `<p class="text-emerald" style="font-size:11px; margin-top:4px; border-top:1px solid #1e293b; padding-top:2px;">☑️ 解决记录: ${i.solution}</p>` : ''}
+          </div>
+        `;
+      }).join('');
+    };
+
+    window.filterIssues = function(cat, btn) {
+      window.activeFilter = cat;
+      document.querySelectorAll('.tag').forEach(b => b.classList.remove('tag-active'));
+      btn.classList.add('tag-active');
+      window.renderIssues();
+    };
+
+    window.openEditIssue = function(id) {
+      const item = window.state.issues.find(i => i.id === id);
+      if (!item) return;
+      document.getElementById('edit-i-id').value = item.id;
+      document.getElementById('edit-i-desc').value = item.description || '';
+      document.getElementById('edit-i-solution').value = item.solution || '';
+      document.getElementById('edit-i-status').checked = item.status === 'resolved';
+      window.toggleModal('modal-edit-issue', true);
+    };
+
+    window.updateIssue = function() {
+      const id = document.getElementById('edit-i-id').value;
+      const item = window.state.issues.find(i => i.id === id);
+      if (item) {
+        item.description = document.getElementById('edit-i-desc').value;
+        item.solution = document.getElementById('edit-i-solution').value;
+        item.status = document.getElementById('edit-i-status').checked ? 'resolved' : 'pending';
+        window.saveState();
+      }
+      window.toggleModal('modal-edit-issue', false);
+      window.renderIssues();
+    };
+
+    window.deleteIssue = function() {
+      const id = document.getElementById('edit-i-id').value;
+      window.state.issues = window.state.issues.filter(i => i.id !== id);
+      window.saveState();
+      window.toggleModal('modal-edit-issue', false);
+      window.renderIssues();
+    };
+
+    // 6. 财务数据保存与显示
+    window.saveFinancials = function() {
+      window.state.financials = {
+        salesInv: document.getElementById('fin-in-sales-inv').value || 'RM 0',
+        salesBank: document.getElementById('fin-in-sales-bank').value || 'RM 0',
+        purInv: document.getElementById('fin-in-pur-inv').value || 'RM 0',
+        purBank: document.getElementById('fin-in-pur-bank').value || 'RM 0',
+        cashIn: document.getElementById('fin-in-cash-in').value || 'RM 0',
+        cashOut: document.getElementById('fin-in-cash-out').value || 'RM 0',
+        reconDiff: document.getElementById('fin-in-recon-diff').value || 'RM 0',
+        suspense: document.getElementById('fin-in-suspense').value || 'RM 0'
+      };
+      window.saveState();
+      window.renderFinancials();
+      window.toggleModal('modal-fin-import', false);
+    };
+
+    window.renderFinancials = function() {
+      const f = window.state.financials || DEFAULT_DATA.financials;
+      document.getElementById('fin-sales-inv').textContent = f.salesInv;
+      document.getElementById('fin-sales-bank').textContent = f.salesBank;
+      document.getElementById('fin-pur-inv').textContent = f.purInv;
+      document.getElementById('fin-pur-bank').textContent = f.purBank;
+      document.getElementById('fin-cash-in').textContent = f.cashIn;
+      document.getElementById('fin-cash-out').textContent = f.cashOut;
+      document.getElementById('fin-recon-diff').textContent = f.reconDiff;
+      document.getElementById('fin-suspense').textContent = f.suspense;
+
+      document.getElementById('fin-in-sales-inv').value = f.salesInv;
+      document.getElementById('fin-in-sales-bank').value = f.salesBank;
+      document.getElementById('fin-in-pur-inv').value = f.purInv;
+      document.getElementById('fin-in-pur-bank').value = f.purBank;
+      document.getElementById('fin-in-cash-in').value = f.cashIn;
+      document.getElementById('fin-in-cash-out').value = f.cashOut;
+      document.getElementById('fin-in-recon-diff').value = f.reconDiff;
+      document.getElementById('fin-in-suspense').value = f.suspense;
+    };
+
+    // 7. WhatsApp 催单文本生成
+    window.generateWhatsAppText = function() {
+      let activeIssues = window.state.issues.filter(i => i.status !== 'resolved');
+      if (window.activeCompanyId) activeIssues = activeIssues.filter(i => i.company_id === window.activeCompanyId);
+      if (activeIssues.length === 0) return alert("当前无待处理疑难事项！");
+      let text = `尊贵的客户您好，以下是做账过程中需要您协助核对的疑难事项：\n\n`;
+      activeIssues.forEach((item, idx) => { text += `${idx + 1}. [${item.amount}] ${item.description}\n`; });
+      text += `\n麻烦抽空核对并提供单据，谢谢！`;
+      navigator.clipboard.writeText(text);
+      alert("WhatsApp 催单文本已成功复制到剪贴板！");
+    };
+
+    // 8. 核查项与税务
+    window.submitCustomChecklist = function() {
+      const label = document.getElementById('input-ck-label').value;
+      if (!label) return;
+      window.state.checklists.push({ id: 'ck_' + Date.now(), label, status: 'unpaid' });
+      window.saveState();
+      document.getElementById('input-ck-label').value = '';
+      window.toggleModal('modal-custom-checklist', false);
+      window.renderChecklists();
+      window.calculateProgress();
+    };
+
+    window.renderChecklists = function() {
+      const container = document.getElementById('checklist-container');
+      if (!container) return;
+      if (window.state.checklists.length === 0) {
+        container.innerHTML = `<div style="text-align:center; color:#64748b; font-size:12px;">暂无固定费用核查项</div>`;
+        return;
+      }
+      container.innerHTML = window.state.checklists.map(ck => `
+        <div onclick="window.toggleChecklist('${ck.id}')" class="list-item flex justify-between items-center">
+          <span>${ck.label}</span>
+          <span class="badge ${ck.status === 'paid' ? 'badge-emerald' : 'badge-slate'}">${ck.status === 'paid' ? '已缴' : '未缴'}</span>
+        </div>
+      `).join('');
+    };
+
+    window.toggleChecklist = function(id) {
+      const item = window.state.checklists.find(c => c.id === id);
+      if (item) item.status = item.status === 'paid' ? 'unpaid' : 'paid';
+      window.saveState();
+      window.renderChecklists();
+      window.calculateProgress();
+    };
+
+    window.submitCustomTax = function() {
+      const tax_year = document.getElementById('input-tax-year').value;
+      if (!tax_year) return;
+      window.state.taxLogs.push({ id: 't_' + Date.now(), tax_year, status: 'unpaid' });
+      window.saveState();
+      document.getElementById('input-tax-year').value = '';
+      window.toggleModal('modal-custom-tax', false);
+      window.renderTaxLogs();
+    };
+
+    window.renderTaxLogs = function() {
+      const container = document.getElementById('tax-container');
+      if (!container) return;
+      if (window.state.taxLogs.length === 0) {
+        container.innerHTML = `<div style="text-align:center; color:#64748b; font-size:12px;">暂无税务记录</div>`;
+        return;
+      }
+      container.innerHTML = window.state.taxLogs.map(t => `
+        <div onclick="window.toggleTax('${t.id}')" class="list-item flex justify-between items-center">
+          <span>${t.tax_year}</span>
+          <span class="badge ${t.status === 'paid' ? 'badge-emerald' : 'badge-slate'}">${t.status === 'paid' ? '已申报' : '待处理'}</span>
+        </div>
+      `).join('');
+    };
+
+    window.toggleTax = function(id) {
+      const item = window.state.taxLogs.find(t => t.id === id);
+      if (item) item.status = item.status === 'paid' ? 'unpaid' : 'paid';
+      window.saveState();
+      window.renderTaxLogs();
+    };
+
+    window.calculateProgress = function() {
+      const total = window.state.checklists.length;
+      const text = document.getElementById('overall-progress-text');
+      const bar = document.getElementById('overall-progress-bar');
+      if (total === 0) {
+        if (text) text.textContent = `0% Completed`;
+        if (bar) bar.style.width = `0%`;
+        return;
+      }
+      const paid = window.state.checklists.filter(c => c.status === 'paid').length;
+      const percent = Math.round((paid / total) * 100);
+      if (text) text.textContent = `${percent}% Completed`;
+      if (bar) bar.style.width = `${percent}%`;
+    };
+
+    window.initDate = function() {
+      const select = document.getElementById('matrix-month-picker');
+      if (!select) return;
+      select.innerHTML = '';
+      const today = new Date('2026-08-01');
+      for (let i = -6; i <= 5; i++) {
+        const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const opt = document.createElement('option');
+        opt.value = `${y}-${m}`;
+        opt.textContent = `${y}年${m}月`;
+        if (i === 0) opt.selected = true;
+        select.appendChild(opt);
       }
     };
 
-    // 页面加载完毕后立刻执行初始化
-    window.addEventListener('DOMContentLoaded', window.initPage);
+    window.performYearEndClosing = function() {
+      const activeUnresolved = window.state.issues.filter(i => i.status === 'pending');
+      if (confirm(`确认年结？未解决的 ${activeUnresolved.length} 项疑难将滚入下一财年。`)) {
+        alert("年结已完成！");
+      }
+    };
+
+    // 全局统一渲染主入口
+    window.renderAll = function() {
+      window.initDate();
+      window.renderCompanyList();
+      window.renderCompanyDropdown();
+      window.renderFinancials();
+      window.renderIssues();
+      window.renderChecklists();
+      window.renderTaxLogs();
+      window.calculateProgress();
+    };
+
+    // 绑定 DOM Ready
+    window.addEventListener('DOMContentLoaded', window.renderAll);
   </script>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen p-5">
+<body>
 
-  <div class="max-w-4xl mx-auto space-y-6">
-    <header class="flex justify-between items-center border-b border-slate-800 pb-4">
-      <h1 class="text-xl font-bold">代理记账疑难追踪控制台 (2026)</h1>
-      <div class="flex gap-2">
-        <button onclick="window.exportBackup()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs rounded border border-slate-700">导出 JSON 备份</button>
-        <button onclick="window.toggleModal('modal-company', true)" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-xs font-medium rounded">新增公司</button>
+  <div class="max-w flex flex-col gap-4">
+    <!-- Header 顶栏 -->
+    <header class="flex justify-between items-center" style="border-bottom: 1px solid #1e293b; padding-bottom: 12px;">
+      <div class="flex items-center gap-3">
+        <h1 style="font-size: 18px; font-weight: bold;">代理记账疑难追踪控制台</h1>
+        <span class="badge badge-indigo">Control Tower 2026</span>
       </div>
-    </header>
-
-    <main class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
-        <h2 class="text-sm font-bold text-slate-300">月度做账选择</h2>
-        <!-- 日期下拉框 -->
-        <select id="matrix-month-picker" class="w-full bg-slate-800 border border-slate-700 text-white text-xs rounded p-2 outline-none font-mono">
-          <option value="">加载中...</option>
-        </select>
-      </div>
-    </main>
-  </div>
-
-  <!-- 弹窗测试 -->
-  <div id="modal-company" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-50">
-    <div class="bg-slate-900 border border-slate-800 rounded-xl max-w-sm w-full p-5 space-y-4">
-      <h3 class="text-sm font-bold text-white">新增公司测试弹窗</h3>
-      <p class="text-xs text-slate-400">如果看到这个窗口，说明 toggleModal 函数已成功修复！</p>
-      <div class="flex justify-end gap-2">
-        <button onclick="window.toggleModal('modal-company', false)" class="px-3 py-1.5 bg-slate-800 text-slate-300 rounded text-xs">关闭</button>
-      </div>
-    </div>
-  </div>
-
-</body>
-</html>
+      <div class="flex items-center gap-2">
+        <button onclick
