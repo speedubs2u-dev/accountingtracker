@@ -10,376 +10,12 @@
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     .tabular-nums { font-variant-numeric: tabular-nums; }
   </style>
-
-  <script>
-    // 1. 全局数据存储（初始彻底清空示范数据）
-    window.state = {
-      companies: [],
-      issues: [],
-      checklists: [],
-      taxLogs: [],
-      financials: {
-        salesInv: 'RM 0', salesBank: 'RM 0',
-        purInv: 'RM 0', purBank: 'RM 0',
-        cashIn: 'RM 0', cashOut: 'RM 0',
-        reconDiff: 'RM 0', suspense: 'RM 0'
-      }
-    };
-
-    window.activeCompanyId = null;
-    window.activeFilter = 'all';
-
-    // 2. 弹窗控制函数
-    window.toggleModal = function(id, show) {
-      const el = document.getElementById(id);
-      if (!el) return;
-      if (show) {
-        el.classList.remove('hidden');
-        el.classList.add('flex');
-      } else {
-        el.classList.add('hidden');
-        el.classList.remove('flex');
-      }
-    };
-
-    // 3. 功能 1 & 2：公司选择与托管公司列表渲染
-    window.selectCompany = function(cid) {
-      window.activeCompanyId = cid;
-      renderCompanyList();
-      
-      const label = document.getElementById('active-company-label');
-      if (label) {
-        if (cid) {
-          const comp = window.state.companies.find(c => c.id === cid);
-          label.textContent = comp ? comp.name : cid;
-          document.getElementById('btn-global-view')?.classList.remove('border-indigo-500/40', 'bg-indigo-500/10');
-        } else {
-          label.textContent = "全局视角 (合并所有公司)";
-          document.getElementById('btn-global-view')?.classList.add('border-indigo-500/40', 'bg-indigo-500/10');
-        }
-      }
-      renderIssues();
-    };
-
-    window.renderCompanyList = function() {
-      const badge = document.getElementById('company-count-badge');
-      if (badge) badge.textContent = `${window.state.companies.length} 家`;
-      
-      const container = document.getElementById('company-list');
-      if (!container) return;
-      
-      if (window.state.companies.length === 0) {
-        container.innerHTML = `<li class="text-slate-500 text-xs text-center py-4 border border-dashed border-slate-800 rounded-lg">暂无公司，请点击右上角【新增公司】</li>`;
-        return;
-      }
-
-      container.innerHTML = window.state.companies.map(c => `
-        <li onclick="selectCompany('${c.id}')" class="p-2 rounded-lg text-xs cursor-pointer border transition flex justify-between items-center ${window.activeCompanyId === c.id ? 'bg-indigo-600/20 border-indigo-500/50 text-white' : 'bg-slate-950/40 border-slate-800/80 text-slate-300 hover:bg-slate-800/50'}">
-          <div>
-            <p class="font-medium">${c.name}</p>
-            <p class="text-[10px] text-slate-400 font-mono">${c.software}</p>
-          </div>
-          <span class="text-[10px] px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded font-mono">${c.type}</span>
-        </li>
-      `).join('');
-    };
-
-    window.renderCompanyDropdown = function() {
-      const select = document.getElementById('input-i-company');
-      if (!select) return;
-      if (window.state.companies.length === 0) {
-        select.innerHTML = `<option value="">请先创建公司</option>`;
-        return;
-      }
-      select.innerHTML = window.state.companies.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-    };
-
-    // 4. 功能 3：月度做账矩阵与进度计算
-    window.generateMonthOptions = function() {
-      const select = document.getElementById('matrix-month-picker');
-      if (!select) return;
-      select.innerHTML = '';
-      
-      const today = new Date('2026-08-01');
-      for (let i = -6; i <= 5; i++) {
-        const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const val = `${y}-${m}`;
-        const opt = document.createElement('option');
-        opt.value = val;
-        opt.textContent = `${y}年${m}月`;
-        if (i === 0) opt.selected = true;
-        select.appendChild(opt);
-      }
-    };
-
-    window.calculateProgress = function() {
-      const total = window.state.checklists.length;
-      const text = document.getElementById('overall-progress-text');
-      const bar = document.getElementById('overall-progress-bar');
-      if (total === 0) {
-        if (text) text.textContent = `0% Completed`;
-        if (bar) bar.style.width = `0%`;
-        return;
-      }
-      const paid = window.state.checklists.filter(c => c.status === 'paid').length;
-      const percent = Math.round((paid / total) * 100);
-      if (text) text.textContent = `${percent}% Completed`;
-      if (bar) bar.style.width = `${percent}%`;
-    };
-
-    // 5. 功能 4：财务与流转大盘
-    window.saveFinancials = function() {
-      window.state.financials = {
-        salesInv: document.getElementById('fin-in-sales-inv').value || 'RM 0',
-        salesBank: document.getElementById('fin-in-sales-bank').value || 'RM 0',
-        purInv: document.getElementById('fin-in-pur-inv').value || 'RM 0',
-        purBank: document.getElementById('fin-in-pur-bank').value || 'RM 0',
-        cashIn: document.getElementById('fin-in-cash-in').value || 'RM 0',
-        cashOut: document.getElementById('fin-in-cash-out').value || 'RM 0',
-        reconDiff: document.getElementById('fin-in-recon-diff').value || 'RM 0',
-        suspense: document.getElementById('fin-in-suspense').value || 'RM 0'
-      };
-      renderFinancials();
-      toggleModal('modal-fin-import', false);
-    };
-
-    window.renderFinancials = function() {
-      const f = window.state.financials;
-      document.getElementById('fin-sales-inv').textContent = f.salesInv;
-      document.getElementById('fin-sales-bank').textContent = f.salesBank;
-      document.getElementById('fin-pur-inv').textContent = f.purInv;
-      document.getElementById('fin-pur-bank').textContent = f.purBank;
-      document.getElementById('fin-cash-in').textContent = f.cashIn;
-      document.getElementById('fin-cash-out').textContent = f.cashOut;
-      document.getElementById('fin-recon-diff').textContent = f.reconDiff;
-      document.getElementById('fin-suspense').textContent = f.suspense;
-    };
-
-    // 6. 功能 5：疑难账目大盘与分类筛选
-    window.renderIssues = function() {
-      const container = document.getElementById('issues-container');
-      if (!container) return;
-      
-      let list = window.activeCompanyId 
-        ? window.state.issues.filter(i => i.company_id === window.activeCompanyId)
-        : window.state.issues;
-
-      if (window.activeFilter === 'archived') {
-        list = list.filter(i => i.status === 'resolved' || i.status === 'done');
-      } else {
-        list = list.filter(i => i.status !== 'resolved' && i.status !== 'done');
-        if (window.activeFilter !== 'all') {
-          list = list.filter(i => i.category === window.activeFilter);
-        }
-      }
-
-      if (list.length === 0) {
-        container.innerHTML = `<p class="text-slate-500 text-xs text-center py-6 border border-dashed border-slate-800 rounded-lg">暂无疑难事项</p>`;
-        return;
-      }
-
-      container.innerHTML = list.map(i => {
-        const comp = window.state.companies.find(c => c.id === i.company_id);
-        const compName = comp ? comp.name : '通用';
-        const isResolved = i.status === 'resolved' || i.status === 'done';
-
-        return `
-          <div onclick="openEditIssue('${i.id}')" class="p-2.5 bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 rounded-lg space-y-1 cursor-pointer transition">
-            <div class="flex justify-between items-center text-xs">
-              <span class="font-bold text-indigo-400 font-mono">[${compName}]</span>
-              <span class="font-mono font-semibold text-amber-400">${i.amount}</span>
-            </div>
-            <p class="text-xs text-slate-200">${i.description}</p>
-            ${i.guess ? `<p class="text-[11px] text-slate-400 italic">推测: ${i.guess}</p>` : ''}
-            ${isResolved && i.solution ? `<p class="text-[11px] text-emerald-400 border-t border-slate-800/60 pt-1">☑️ 解决记录: ${i.solution}</p>` : ''}
-          </div>
-        `;
-      }).join('');
-    };
-
-    window.filterIssues = function(cat, btn) {
-      window.activeFilter = cat;
-      document.querySelectorAll('.issue-filter-btn').forEach(b => {
-        b.classList.remove('bg-indigo-600', 'text-white');
-        b.classList.add('bg-slate-800', 'text-slate-400');
-      });
-      btn.classList.remove('bg-slate-800', 'text-slate-400');
-      btn.classList.add('bg-indigo-600', 'text-white');
-      renderIssues();
-    };
-
-    // 7. 功能 6：月度法定/固定费用核查
-    window.renderChecklists = function() {
-      const container = document.getElementById('checklist-container');
-      if (!container) return;
-      if (window.state.checklists.length === 0) {
-        container.innerHTML = `<p class="text-slate-500 text-xs text-center py-2">暂无核查项</p>`;
-        return;
-      }
-      container.innerHTML = window.state.checklists.map(ck => `
-        <li onclick="toggleChecklist('${ck.id}')" class="p-2 bg-slate-950/40 border border-slate-800/80 rounded-lg flex justify-between items-center cursor-pointer hover:border-slate-700 transition">
-          <span class="text-slate-300">${ck.label}</span>
-          <span class="text-[10px] px-1.5 py-0.5 rounded font-mono ${ck.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}">${ck.status === 'paid' ? '已缴' : '未缴'}</span>
-        </li>
-      `).join('');
-    };
-
-    window.toggleChecklist = function(id) {
-      const item = window.state.checklists.find(c => c.id === id);
-      if (item) item.status = item.status === 'paid' ? 'unpaid' : 'paid';
-      renderChecklists();
-      calculateProgress();
-    };
-
-    // 8. 功能 7：税务 Tax Period 汇总
-    window.renderTaxLogs = function() {
-      const container = document.getElementById('tax-container');
-      if (!container) return;
-      if (window.state.taxLogs.length === 0) {
-        container.innerHTML = `<p class="text-slate-500 text-xs text-center py-2">暂无税务记录</p>`;
-        return;
-      }
-      container.innerHTML = window.state.taxLogs.map(t => `
-        <li onclick="toggleTax('${t.id}')" class="p-2 bg-slate-950/40 border border-slate-800/80 rounded-lg flex justify-between items-center cursor-pointer hover:border-slate-700 transition">
-          <span class="text-slate-300">${t.tax_year}</span>
-          <span class="text-[10px] px-1.5 py-0.5 rounded font-mono ${t.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}">${t.status === 'paid' ? '已申报' : '待处理'}</span>
-        </li>
-      `).join('');
-    };
-
-    window.toggleTax = function(id) {
-      const item = window.state.taxLogs.find(t => t.id === id);
-      if (item) item.status = item.status === 'paid' ? 'unpaid' : 'paid';
-      renderTaxLogs();
-    };
-
-    // 9. 功能 8：一键生成 WhatsApp 催单文本
-    window.generateWhatsAppText = function() {
-      let activeIssues = window.state.issues.filter(i => i.status !== 'resolved' && i.status !== 'done');
-      if (window.activeCompanyId) activeIssues = activeIssues.filter(i => i.company_id === window.activeCompanyId);
-      if (activeIssues.length === 0) return alert("当前无待处理疑难事项！");
-      let text = `尊贵的客户您好，以下是做账过程中需要您协助核对的疑难事项：\n\n`;
-      activeIssues.forEach((item, idx) => { text += `${idx + 1}. [${item.amount}] ${item.description}\n`; });
-      text += `\n麻烦抽空核对并提供单据，谢谢！`;
-      navigator.clipboard.writeText(text);
-      alert("WhatsApp 催单文本已复制到剪贴板！");
-    };
-
-    // 10. 功能 9：财年年结/结转
-    window.performYearEndClosing = function() {
-      const activeUnresolved = window.state.issues.filter(i => i.status === 'pending');
-      const count = activeUnresolved.length;
-      if (confirm(`即将进行财年年结：\n1. 所有【已平账/已解决】历史数据将被归档。\n2. 当前剩余的 ${count} 项【未解决疑难🔴】将自动滚入下一个新财年。\n\n确认继续？`)) {
-        activeUnresolved.forEach(i => i.fiscal_year = 2027);
-        alert(`年结成功！未解决的 ${count} 项问题已自动带入新财年 (2027)。`);
-        init();
-      }
-    };
-
-    // 11. Modal 提交逻辑
-    window.submitCompany = function() {
-      const name = document.getElementById('input-c-name').value;
-      const type = document.getElementById('input-c-type').value;
-      const software = document.getElementById('input-c-sw').value || '未指定';
-      if (!name) return alert('请输入公司名称');
-      
-      window.state.companies.push({ id: 'c_' + Date.now(), name, type, software });
-      document.getElementById('input-c-name').value = '';
-      document.getElementById('input-c-sw').value = '';
-      
-      toggleModal('modal-company', false);
-      renderCompanyList();
-      renderCompanyDropdown();
-    };
-
-    window.submitIssue = function() {
-      const company_id = document.getElementById('input-i-company').value;
-      const category = document.getElementById('input-i-cat').value;
-      const amount = document.getElementById('input-i-amt').value || 'RM 0.00';
-      const description = document.getElementById('input-i-desc').value;
-      const guess = document.getElementById('input-i-guess').value;
-      if (!company_id) return alert('请先创建并选择公司！');
-      if (!description) return alert('请输入问题描述');
-      
-      window.state.issues.push({ id: 'i_' + Date.now(), company_id, category, amount, description, guess, status: 'pending', fiscal_year: 2026 });
-      document.getElementById('input-i-desc').value = '';
-      document.getElementById('input-i-guess').value = '';
-      document.getElementById('input-i-amt').value = '';
-      
-      toggleModal('modal-issue', false);
-      renderIssues();
-    };
-
-    window.openEditIssue = function(id) {
-      const item = window.state.issues.find(i => i.id === id);
-      if (!item) return;
-      document.getElementById('edit-i-id').value = item.id;
-      document.getElementById('edit-i-desc').value = item.description || '';
-      document.getElementById('edit-i-solution').value = item.solution || '';
-      document.getElementById('edit-i-status').checked = item.status === 'resolved' || item.status === 'done';
-      toggleModal('modal-edit-issue', true);
-    };
-
-    window.updateIssue = function() {
-      const id = document.getElementById('edit-i-id').value;
-      const item = window.state.issues.find(i => i.id === id);
-      if (item) {
-        item.description = document.getElementById('edit-i-desc').value;
-        item.solution = document.getElementById('edit-i-solution').value;
-        item.status = document.getElementById('edit-i-status').checked ? 'resolved' : 'pending';
-      }
-      toggleModal('modal-edit-issue', false);
-      renderIssues();
-    };
-
-    window.deleteIssue = function() {
-      const id = document.getElementById('edit-i-id').value;
-      window.state.issues = window.state.issues.filter(i => i.id !== id);
-      toggleModal('modal-edit-issue', false);
-      renderIssues();
-    };
-
-    window.submitCustomChecklist = function() {
-      const label = document.getElementById('input-ck-label').value;
-      if (!label) return;
-      window.state.checklists.push({ id: 'ck_' + Date.now(), label, status: 'unpaid' });
-      document.getElementById('input-ck-label').value = '';
-      toggleModal('modal-custom-checklist', false);
-      renderChecklists();
-      calculateProgress();
-    };
-
-    window.submitCustomTax = function() {
-      const tax_year = document.getElementById('input-tax-year').value;
-      if (!tax_year) return;
-      window.state.taxLogs.push({ id: 't_' + Date.now(), tax_year, status: 'unpaid' });
-      document.getElementById('input-tax-year').value = '';
-      toggleModal('modal-custom-tax', false);
-      renderTaxLogs();
-    };
-
-    // 12. 系统初始化
-    window.init = function() {
-      generateMonthOptions();
-      renderCompanyList();
-      renderCompanyDropdown();
-      renderFinancials();
-      renderIssues();
-      renderChecklists();
-      renderTaxLogs();
-      calculateProgress();
-    };
-
-    window.addEventListener('DOMContentLoaded', window.init);
-  </script>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen p-3 md:p-5 font-sans selection:bg-indigo-500 selection:text-white">
 
   <div class="max-w-[1650px] mx-auto space-y-4">
     
-    <!-- 1. Header 顶栏 -->
+    <!-- Header 顶栏 -->
     <header class="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
       <div class="flex items-center gap-3">
         <div class="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold text-sm">
@@ -394,26 +30,30 @@
         </div>
       </div>
 
-      <div class="flex items-center gap-3">
-        <button onclick="performYearEndClosing()" class="px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 rounded-lg text-xs font-medium transition flex items-center gap-1.5">
-          <i class="fa-solid fa-arrows-rotate text-[10px]"></i> 财年年结/结转
+      <div class="flex flex-wrap items-center gap-2">
+        <!-- 备份与还原组件 -->
+        <button onclick="exportBackup()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+          <i class="fa-solid fa-download text-indigo-400"></i> 导出备份 JSON
         </button>
-        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> 系统就绪
-        </div>
+        <label class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium transition cursor-pointer flex items-center gap-1.5">
+          <i class="fa-solid fa-upload text-emerald-400"></i> 导入备份 JSON
+          <input type="file" id="import-json-file" accept=".json" onchange="importBackup(event)" class="hidden">
+        </label>
+        
+        <button onclick="performYearEndClosing()" class="px-2.5 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+          <i class="fa-solid fa-arrows-rotate text-[10px]"></i> 财年结转
+        </button>
         <button onclick="toggleModal('modal-company', true)" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition shadow-lg shadow-indigo-600/20 flex items-center gap-1.5">
           <i class="fa-solid fa-plus text-[10px]"></i> 新增公司
         </button>
       </div>
     </header>
 
-    <!-- 2. 三栏式控制台布局 -->
+    <!-- 三栏控制台主体 -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
       
-      <!-- ==================== 左栏 (Col 3) ==================== -->
+      <!-- 左栏 -->
       <div class="lg:col-span-3 space-y-4">
-        
-        <!-- 功能 1 & 2：托管公司列表 -->
         <div class="bg-slate-900/90 border border-slate-800/80 rounded-xl p-3.5 shadow-sm">
           <div class="flex items-center justify-between mb-2.5">
             <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
@@ -430,10 +70,215 @@
           <ul id="company-list" class="space-y-1.5 max-h-[340px] overflow-y-auto pr-1"></ul>
         </div>
 
-        <!-- 功能 3：月度做账矩阵 -->
         <div class="bg-slate-900/90 border border-slate-800/80 rounded-xl p-3.5 space-y-3 shadow-sm">
           <div class="flex items-center justify-between">
             <h3 class="text-xs font-bold text-slate-200 flex items-center gap-1.5">
               <i class="fa-solid fa-chart-pie text-indigo-400"></i> 月度做账矩阵
             </h3>
-            <select id="matrix-month-picker" onchange="calculateProgress()" class="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded p
+            <select id="matrix-month-picker" onchange="calculateProgress()" class="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded px-2 py-0.5 outline-none font-mono"></select>
+          </div>
+          <div class="space-y-1">
+            <div class="flex justify-between text-xs">
+              <span class="text-slate-400">选定月份进度:</span>
+              <span id="overall-progress-text" class="text-emerald-400 font-bold font-mono">0% Completed</span>
+            </div>
+            <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div id="overall-progress-bar" class="bg-emerald-500 h-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 中栏 -->
+      <div class="lg:col-span-6 space-y-4">
+        <div class="bg-slate-900/90 border border-slate-800/80 rounded-xl p-3.5 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                <i class="fa-solid fa-chart-line text-indigo-400"></i> 财务与流转大盘
+              </h2>
+              <span id="active-company-label" class="text-xs text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full font-medium">全局视角</span>
+            </div>
+            <button onclick="toggleModal('modal-fin-import', true)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-medium border border-slate-700 transition flex items-center gap-1">
+              <i class="fa-solid fa-file-import text-indigo-400"></i> 录入/修改数据
+            </button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2.5">
+            <div class="bg-slate-950/60 border border-slate-800/80 rounded-lg p-2.5 space-y-1">
+              <div class="flex justify-between items-center text-[11px]"><span class="text-slate-400">1. 销售 vs 入账</span></div>
+              <div class="text-xs font-mono space-y-0.5">
+                <p class="text-slate-300">系统销售: <span id="fin-sales-inv" class="text-white font-bold">RM 0</span></p>
+                <p class="text-emerald-400">银行入账: <span id="fin-sales-bank" class="font-bold">RM 0</span></p>
+              </div>
+            </div>
+            <div class="bg-slate-950/60 border border-slate-800/80 rounded-lg p-2.5 space-y-1">
+              <div class="flex justify-between items-center text-[11px]"><span class="text-slate-400">2. 采购 vs 出账</span></div>
+              <div class="text-xs font-mono space-y-0.5">
+                <p class="text-slate-300">系统采购: <span id="fin-pur-inv" class="text-white font-bold">RM 0</span></p>
+                <p class="text-rose-400">银行出账: <span id="fin-pur-bank" class="font-bold">RM 0</span></p>
+              </div>
+            </div>
+            <div class="bg-slate-950/60 border border-slate-800/80 rounded-lg p-2.5 space-y-1">
+              <div class="flex justify-between items-center text-[11px]"><span class="text-slate-400">3. 零用金 Cash</span></div>
+              <div class="text-xs font-mono space-y-0.5">
+                <p class="text-slate-300">当月拨入: <span id="fin-cash-in" class="text-slate-200">RM 0</span></p>
+                <p class="text-indigo-300">实际已报: <span id="fin-cash-out" class="text-slate-200">RM 0</span></p>
+              </div>
+            </div>
+            <div class="bg-amber-950/20 border border-amber-500/30 rounded-lg p-2.5 space-y-1">
+              <div class="flex justify-between items-center text-[11px]"><span class="text-amber-400 font-medium">4. 汇总差额 / 悬账</span></div>
+              <div class="text-xs font-mono space-y-0.5">
+                <p class="text-amber-300">Recon 差额: <span id="fin-recon-diff" class="font-bold">RM 0</span></p>
+                <p class="text-rose-400">悬账 Suspense: <span id="fin-suspense" class="font-bold">RM 0</span></p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-slate-900/90 border border-slate-800/80 rounded-xl p-3.5 space-y-3">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+              <i class="fa-solid fa-triangle-exclamation text-amber-400"></i> 疑难账目大盘
+            </h2>
+            <button onclick="toggleModal('modal-issue', true)" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition shadow-md shadow-indigo-600/20 flex items-center gap-1">
+              <i class="fa-solid fa-plus text-[10px]"></i> 手动新增 Issue
+            </button>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-1.5 text-xs border-b border-slate-800/80 pb-2.5">
+            <button onclick="filterIssues('all', this)" class="issue-filter-btn px-2.5 py-1 rounded-md bg-indigo-600 text-white font-medium">全部</button>
+            <button onclick="filterIssues('missing_docs', this)" class="issue-filter-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-400 hover:text-white">📄 单据缺失</button>
+            <button onclick="filterIssues('discrepancies', this)" class="issue-filter-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-400 hover:text-white">⚖️ 账面差额</button>
+            <button onclick="filterIssues('unidentified_txn', this)" class="issue-filter-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-400 hover:text-white">🏦 银行不明</button>
+            <button onclick="filterIssues('statutory', this)" class="issue-filter-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-400 hover:text-white">🏛️ 其他合规</button>
+            <button onclick="filterIssues('archived', this)" class="issue-filter-btn px-2.5 py-1 rounded-md bg-slate-800 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/10 ml-auto">☑️ 已归档/完成</button>
+          </div>
+
+          <div id="issues-container" class="space-y-2 max-h-[380px] overflow-y-auto pr-1"></div>
+
+          <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+            <span class="text-[11px] text-slate-400">快捷沟通组件:</span>
+            <button onclick="generateWhatsAppText()" class="px-3 py-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30 rounded text-xs font-medium transition flex items-center gap-1.5">
+              <i class="fa-brands fa-whatsapp text-emerald-400"></i> 一键生成 WhatsApp 催单文本
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右栏 -->
+      <div class="lg:col-span-3 space-y-4">
+        <div class="bg-slate-900/90 border border-slate-800/80 rounded-xl p-3.5 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+              <i class="fa-solid fa-list-check text-indigo-400"></i> 月度法定/固定费用
+            </h3>
+            <button onclick="toggleModal('modal-custom-checklist', true)" class="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium">+ 自定义</button>
+          </div>
+          <ul id="checklist-container" class="space-y-1.5 text-xs"></ul>
+        </div>
+
+        <div class="bg-slate-900/90 border border-slate-800/80 rounded-xl p-3.5 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+              <i class="fa-solid fa-landmark text-amber-400"></i> 税务 Tax Period 汇总
+            </h3>
+            <button onclick="toggleModal('modal-custom-tax', true)" class="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium">+ 自定义</button>
+          </div>
+          <ul id="tax-container" class="space-y-1.5 text-xs"></ul>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MODALS 弹窗区域 -->
+  <div id="modal-company" class="fixed inset-0 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+    <div class="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+      <h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-building text-indigo-400"></i> 新增托管公司</h3>
+      <div class="space-y-3 text-xs">
+        <div><label class="block text-slate-400 mb-1">公司名称</label><input id="input-c-name" type="text" placeholder="例如: Fast Auto Parts Sdn Bhd" class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white outline-none"></div>
+        <div>
+          <label class="block text-slate-400 mb-1">公司类型</label>
+          <select id="input-c-type" class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white outline-none">
+            <option value="Sdn Bhd">Sdn Bhd</option>
+            <option value="PLT">PLT</option>
+            <option value="Sole Prop">Sole Prop</option>
+          </select>
+        </div>
+        <div><label class="block text-slate-400 mb-1">使用软件</label><input id="input-c-sw" type="text" placeholder="AutoCount / SQL Account" class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white outline-none"></div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="toggleModal('modal-company', false)" class="px-3 py-1.5 bg-slate-800 text-slate-300 rounded text-xs">取消</button>
+        <button onclick="submitCompany()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-medium">保存公司</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-issue" class="fixed inset-0 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+    <div class="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 space-y-3 shadow-2xl">
+      <h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-triangle-exclamation text-amber-400"></i> 手动新增疑难事项</h3>
+      <div class="space-y-2.5 text-xs">
+        <div><label class="block text-slate-400 mb-1">选择公司</label><select id="input-i-company" class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white outline-none"></select></div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-slate-400 mb-1">分类</label>
+            <select id="input-i-cat" class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white outline-none">
+              <option value="missing_docs">📄 单据缺失</option>
+              <option value="discrepancies">⚖️ 账面差额</option>
+              <option value="unidentified_txn">🏦 银行不明</option>
+              <option value="statutory">🏛️ 其他合规</option>
+            </select>
+          </div>
+          <div><label class="block text-slate-400 mb-1">涉及金额</label><input id="input-i-amt" type="text" placeholder="RM 0.00" class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white outline-none font-mono"></div>
+        </div>
+        <div><label class="block text-slate-400 mb-1">问题描述</label><textarea id="input-i-desc" placeholder="请输入具体账目异常..." class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white outline-none h-16"></textarea></div>
+        <div><label class="block text-slate-400 mb-1">推导猜测 / 备注</label><input id="input-i-guess" type="text" placeholder="例如: 董事私纳或漏开发票" class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white outline-none"></div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="toggleModal('modal-issue', false)" class="px-3 py-1.5 bg-slate-800 text-slate-300 rounded text-xs">取消</button>
+        <button onclick="submitIssue()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-medium">保存疑难</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-edit-issue" class="fixed inset-0 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+    <div class="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 space-y-3 shadow-2xl">
+      <div class="flex justify-between items-center">
+        <h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-pen-to-square text-indigo-400"></i> 编辑疑难事项与解决记录</h3>
+        <button onclick="toggleModal('modal-edit-issue', false)" class="text-slate-400 hover:text-white text-xs">✕</button>
+      </div>
+      <input id="edit-i-id" type="hidden">
+      <div class="space-y-2.5 text-xs">
+        <div><label class="block text-slate-400 mb-1">问题描述</label><textarea id="edit-i-desc" class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white outline-none h-16"></textarea></div>
+        <div><label class="block text-slate-400 mb-1">已完成 / 解决的描述记录</label><textarea id="edit-i-solution" placeholder="如: 客户补回 Tax Invoice，账已对平..." class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white outline-none h-16"></textarea></div>
+        <div class="flex items-center gap-2 pt-1">
+          <input id="edit-i-status" type="checkbox" class="w-4 h-4 accent-emerald-500 rounded cursor-pointer">
+          <label for="edit-i-status" class="text-emerald-400 font-medium cursor-pointer">标记为 ☑️ 已完成 / 已解决 (移入归档)</label>
+        </div>
+      </div>
+      <div class="flex justify-between items-center pt-3 border-t border-slate-800">
+        <button onclick="deleteIssue()" class="px-3 py-1.5 bg-rose-600/20 text-rose-400 border border-rose-500/30 hover:bg-rose-600/30 rounded text-xs font-medium">删除记录</button>
+        <div class="flex gap-2">
+          <button onclick="toggleModal('modal-edit-issue', false)" class="px-3 py-1.5 bg-slate-800 text-slate-300 rounded text-xs">取消</button>
+          <button onclick="updateIssue()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-medium">保存更改</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-fin-import" class="fixed inset-0 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+    <div class="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 space-y-3 shadow-2xl">
+      <h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-calculator text-indigo-400"></i> 财务大盘指标录入</h3>
+      <div class="space-y-2 text-xs">
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="block text-slate-400 mb-1">销售发票总额</label><input id="fin-in-sales-inv" type="text" class="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-white"></div>
+          <div><label class="block text-slate-400 mb-1">银行实际入账</label><input id="fin-in-sales-bank" type="text" class="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-white"></div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="block text-slate-400 mb-1">采购发票总额</label><input id="fin-in-pur-inv" type="text" class="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-white"></div>
+          <div><label class="block text-slate-400 mb-1">银行实际出账</label><input id="fin-in-pur-bank" type="text" class="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-white"></div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="block text-slate-400 mb-1">零用金拨入</label><input id="fin-in-cash-in" type="text" class="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-white"></div>
+          <div><label class="block text-slate-400 mb-1">零用金已报</label><input id="fin-in-
